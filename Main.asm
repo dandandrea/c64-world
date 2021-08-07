@@ -131,63 +131,6 @@ ruler           lda #48
                 jmp @l1
 @done
 
-                ; Double buffering: Fill "bank 0" with all A's
-                jmp skip_for_now
-fill_a          lda #1 ; "A"
-                ldx #0
-@fill_0         sta $0400,x
-                cpx #250
-                beq @fill_1
-                inx
-                jmp @fill_0
-@fill_1         ldx #0
-@fill_2         sta $0400 + 250,x
-                cpx #250
-                beq @fill_3
-                inx
-                jmp @fill_2
-@fill_3         ldx #0
-@fill_4         sta $0400 + 500,x
-                cpx #250
-                beq @fill_5
-                inx
-                jmp @fill_4
-@fill_5         ldx #0
-@fill_6         sta $0400 + 750,x
-                cpx #250
-                beq fill_b
-                inx
-                jmp @fill_6
-skip_for_now
-
-                ; Double buffering: Fill "bank 1" with all B's
-fill_b          lda #2 ; "B"
-                ldx #0
-@fill_0         sta $0800,x
-                cpx #250
-                beq @fill_1
-                inx
-                jmp @fill_0
-@fill_1         ldx #0
-@fill_2         sta $0800 + 250,x
-                cpx #250
-                beq @fill_3
-                inx
-                jmp @fill_2
-@fill_3         ldx #0
-@fill_4         sta $0800 + 500,x
-                cpx #250
-                beq @fill_5
-                inx
-                jmp @fill_4
-@fill_5         ldx #0
-@fill_6         sta $0800 + 750,x
-                cpx #250
-                beq done_fill
-                inx
-                jmp @fill_6
-done_fill       ; Done
-
 ; Setup raster line-based interrupt structure
                 lda #$7f
                 sta $dc0d
@@ -220,8 +163,6 @@ our_isr         inc int_counter
                 ; inc $d020 ; Change border color to show time spent in loop
                 lda #0    ; Reset int_counter
                 sta int_counter
-
-                ; jsr sw_dbuff_bank
 
                 ; Process key presses
 check_w         check_key 9
@@ -790,7 +731,6 @@ redraw_viewport
                 jsr NUMOUT
 
                 ; vp_map_start is set, we can start copying map_data bytes into screen memory now
-                ; TODO: USE DOUBLE-BUFFERING
 
                 ; Initial screen pointer to $0400
                 lda #$00
@@ -840,25 +780,4 @@ redraw_vp_row   ldy #0
                 beq @done
                 iny
                 jmp @loop
-@done           rts
-
-; Switch double-buffering bank
-sw_dbuff_bank   lda $d018
-                cmp #$15
-                bne @not_15
-                ; Currently $15
-                lda #$25
-                sta $d018
-                jmp @done
-@not_15         lda #$15
-                sta $d018
-@done           rts
-
-; Get current double-buffering bank
-curr_dbuff_bank lda $d018
-                cmp #$15
-                bne @not_15
-                lda #0
-                jmp @done
-@not_15         lda #1
 @done           rts
