@@ -110,12 +110,6 @@ our_isr         inc int_counter
                 lda #0 ; Reset int_counter
                 sta int_counter
 
-                ; Make a copy of current player_x and player_y values
-                lda player_x
-                sta player_x_prev
-                lda player_y
-                sta player_y_prev
-
 ; Process key presses
 ; Move up?
 check_w         check_key 9
@@ -124,6 +118,7 @@ check_w         check_key 9
                 compare_numbers player_y, #0, #0, #0
                 cmp #0
                 beq check_s
+                ; TODO: Detect attempt to move into non-blank position
                 dec player_y
                 lda #3
                 jsr draw_player
@@ -136,6 +131,7 @@ check_s         check_key 13
                 compare_numbers player_y, #0, #24, #0
                 cmp #0
                 beq check_a
+                ; TODO: Detect attempt to move into non-blank position
                 inc player_y
                 lda #4
                 jsr draw_player
@@ -148,6 +144,7 @@ check_a         check_key 10
                 compare_numbers player_x, #0, #0, #0
                 cmp #0
                 beq check_d
+                ; TODO: Detect attempt to move into non-blank position
                 dec player_x
                 lda #1
                 jsr draw_player
@@ -160,6 +157,7 @@ check_d         check_key 18
                 compare_numbers player_x, #0, #39, #0
                 cmp #0
                 beq mainloop_end
+                ; TODO: Detect attempt to move into non-blank position
                 inc player_x
                 lda #2
                 jsr draw_player
@@ -169,9 +167,6 @@ mainloop_end    jmp KERNAL_ISR ; Regular interrupt handling
 
 player_x        BYTE 20
 player_y        BYTE 5
-
-player_x_prev   BYTE 0
-player_y_prev   BYTE 0
 
 map_data_start  BYTE 0, 0
 
