@@ -110,6 +110,12 @@ our_isr         inc int_counter
                 lda #0 ; Reset int_counter
                 sta int_counter
 
+; Make a copy of the current position
+                lda player_x
+                sta player_x_prev
+                lda player_y
+                sta player_y_prev
+
 ; Process key presses
 ; Move up?
 check_w         check_key 9
@@ -118,9 +124,16 @@ check_w         check_key 9
                 compare_numbers player_y, #0, #0, #0
                 cmp #0
                 beq check_s
-                ; TODO: Detect attempt to move into non-blank position
                 dec player_y
-                lda #3
+                ; Don't move into non-blank position
+                ldx player_y
+                ldy player_x
+                jsr get_char
+                cmp #32
+                beq @go_w
+                inc player_y
+                jmp mainloop_end
+@go_w           lda #1
                 jsr draw_player
                 jmp mainloop_end
 
@@ -131,9 +144,16 @@ check_s         check_key 13
                 compare_numbers player_y, #0, #24, #0
                 cmp #0
                 beq check_a
-                ; TODO: Detect attempt to move into non-blank position
                 inc player_y
-                lda #4
+                ; Don't move into non-blank position
+                ldx player_y
+                ldy player_x
+                jsr get_char
+                cmp #32
+                beq @go_s
+                dec player_y
+                jmp mainloop_end
+@go_s           lda #1
                 jsr draw_player
                 jmp mainloop_end
 
@@ -144,9 +164,16 @@ check_a         check_key 10
                 compare_numbers player_x, #0, #0, #0
                 cmp #0
                 beq check_d
-                ; TODO: Detect attempt to move into non-blank position
                 dec player_x
-                lda #1
+                ; Don't move into non-blank position
+                ldx player_y
+                ldy player_x
+                jsr get_char
+                cmp #32
+                beq @go_a
+                inc player_x
+                jmp mainloop_end
+@go_a           lda #1
                 jsr draw_player
                 jmp mainloop_end
 
@@ -157,9 +184,16 @@ check_d         check_key 18
                 compare_numbers player_x, #0, #39, #0
                 cmp #0
                 beq mainloop_end
-                ; TODO: Detect attempt to move into non-blank position
                 inc player_x
-                lda #2
+                ; Don't move into non-blank position
+                ldx player_y
+                ldy player_x
+                jsr get_char
+                cmp #32
+                beq @go_d
+                dec player_x
+                jmp mainloop_end
+@go_d           lda #1
                 jsr draw_player
 
                 ; Bottom of main loop
@@ -167,6 +201,9 @@ mainloop_end    jmp KERNAL_ISR ; Regular interrupt handling
 
 player_x        BYTE 20
 player_y        BYTE 5
+
+player_x_prev   BYTE 0
+player_y_prev   BYTE 0
 
 map_data_start  BYTE 0, 0
 
@@ -202,8 +239,8 @@ map_data
                 BYTE    $18,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20
                 BYTE    $18,$20,$18,$18,$18,$18,$18,$18,$18,$18,$18,$18,$18,$18,$18,$18,$18,$18,$18,$18,$18,$18,$18,$18,$18,$18,$18,$18,$18,$18,$18,$18,$18,$18,$18,$18,$18,$18,$18,$18
 
-; Print a character (X = row, Y = col, A = character)
-print_char      pha
+; Put character at location (X = row, Y = col, A = character)
+put_char        sta temp
 
                 lda #$00
                 sta $fb
@@ -231,14 +268,44 @@ print_char      pha
                 sta $fc
 
                 ldy #0
-                pla
+                lda temp
                 sta ($fb),Y
 
                 rts
 
+; Get character at location (X = row, Y = col, returns character in A)
+get_char        lda #$00
+                sta $fb
+                lda #$04
+                sta $fc
+
+@rows           cpx #0
+                beq @cols
+                lda #40
+                clc
+                adc $fb
+                sta $fb
+                lda $fc
+                adc #0
+                sta $fc
+                dex
+                jmp @rows
+
+@cols           tya
+                clc
+                adc $fb
+                sta $fb
+                lda #0
+                adc $fc
+                sta $fc
+
+                ldy #0
+                lda ($fb),Y
+
+                rts
+
 ; Draw screen
-draw_screen
-                ; Store pointer to map data in $fb/$fc for use in indirect addressing
+draw_screen     ; Store pointer to map data in $fb/$fc for use in indirect addressing
                 lda #<map_data
                 sta map_data_start
                 sta $fb
@@ -294,39 +361,22 @@ draw_screen_row ldy #0
                 jmp @loop
 @done           rts
 
-; Draw player (A = movement direction: 0 = no movement, 1 = left, 2 = right, 3 = up, 4 = down)
-draw_player     ; Load current position of player for later use in call to print_char
-                ldx player_y   ; row
-                ldy player_x   ; column
-
-                ; Optionally erase previous player position based on A
+; Draw player (A: 0 = do not erase previous space, 1 = erase previous space)
+draw_player     ; Optionally erase previous player position based on A
                 cmp #0
                 beq @draw
-                cmp #2
-                beq @erase_left
-                cmp #1
-                beq @erase_right
-                cmp #4
-                beq @erase_up
-                ; Erase previous position after move down
-                inx
-                jmp @erase
-@erase_left     ; Erase previous position after move left
-                dey
-                jmp @erase
-@erase_right    ; Erase previous position after move right
-                iny
-                jmp @erase
-@erase_up       ; Erase previous position after move up
-                dex
-@erase          lda #32
-                jsr print_char
 
-                ; Draw current player position
-@draw           lda #00
+                ; Erase previous character
+                ldx player_y_prev
+                ldy player_x_prev
+                lda #32
+                jsr put_char
+
+@draw           ; Draw current player position
+                lda #00
                 ldx player_y   ; row
                 ldy player_x   ; column
-                jsr print_char
+                jsr put_char
 
                 ; Display new position (X)
                 ldx #2 ; Row
