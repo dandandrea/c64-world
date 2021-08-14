@@ -74,7 +74,6 @@ CHRIN = $ffcf
 
 ; For map files
 FILENUM = 3
-MAPNUM = 0
 
 ; Generate map files and then load first map
                 jsr gen_map_files
@@ -193,6 +192,8 @@ player_y        BYTE 4
 
 player_x_prev   BYTE 0
 player_y_prev   BYTE 0
+
+map_num         BYTE 0, 0
 
 map_data_start  BYTE 0, 0
 
@@ -486,7 +487,7 @@ delay           ldx #0
                 jmp @l1
 @done           rts
 
-; Load map data based on MAPNUM
+; Load map data based on map_num
 load_map_data  ; Call SETLFS
                 lda #FILENUM  ; Logical File number
                 ldx #8        ; Device 8
@@ -494,7 +495,7 @@ load_map_data  ; Call SETLFS
                 jsr SETLFS
 
                 ; Dynamic filename based on MAPNUM
-                lda #MAPNUM
+                lda map_num
                 clc
                 adc #35
                 sta filename+3
@@ -560,8 +561,8 @@ gen_map_files   ; Call SETLFS
                 ldy #FILENUM  ; Device command
                 jsr SETLFS
 
-                ; Dynamic filename based on MAPNUM
-                lda #MAPNUM
+                ; Dynamic filename based on map_num
+                lda map_num
                 clc
                 adc #35
                 sta filename_new+6
