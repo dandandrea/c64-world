@@ -8,26 +8,10 @@ defm            check_key
                 cmp #/1
                 bne @not_pressed
                 lda #1
+                sta player_moved
                 jmp @check_key_done
 @not_pressed    lda #0
 @check_key_done nop
-endm
-
-; Decrement a 16 bit number
-defm            decrement_number
-                lda /1
-                bne @skip
-                dec /1 + 1
-@skip           dec /1
-endm
-
-; Increment a 16 bit number
-defm            increment_number
-                lda /1
-                cmp #255
-                bne @skip
-                inc /1 + 1
-@skip           inc /1
 endm
 
 ; Program starts at $1000
@@ -78,131 +62,307 @@ mainloop        ; Make a copy of the current position
                 lda player_y
                 sta player_y_prev
 
-; Process key presses
+                ; Reset player_moved
+                lda #0
+                sta player_moved
+
+                ; Check for "w" key press
                 jsr check_w_key
-                cmp #1
-                beq mainloop
+                lda player_moved
+                bne mainloop
+
+                ; Check for "s" key press
                 jsr check_s_key
-                cmp #1
-                beq mainloop
+                lda player_moved
+                bne mainloop
+
+                ; Check for "a" key press
                 jsr check_a_key
-                cmp #1
-                beq mainloop
+                lda player_moved
+                bne mainloop
+
+                ; Check for "d" key press
                 jsr check_d_key
 
-; Bottom of main loop
-mainloop_end    jmp mainloop
+                ; Bottom of main loop
+                jmp mainloop
 
-; Check for movement into another screen
-check_new_scr
+; Returns A: 0 = no overflow/underflow, 1 = overflow/underflow
+; temp + 6: Return address
+move_player_up  lda player_y
+                cmp #0
+                beq @underflow
+                dec player_y
+                lda #0
+                jmp (temp + 6)
+@underflow      lda #24
+                sta player_y
+                lda #1
+                jmp (temp + 6)
+
+; Returns A: 0 = no overflow/underflow, 1 = overflow/underflow
+; temp + 6: Return address
+move_player_dn  lda player_y
+                cmp #24
+                beq @overflow
+                inc player_y
+                lda #0
+                jmp (temp + 6)
+@overflow       lda #0
+                sta player_y
+                lda #1
+                jmp (temp + 6)
+
+; Returns A: 0 = no overflow/underflow, 1 = overflow/underflow
+; temp + 6: Return address
+move_player_lt  lda player_x
+                cmp #0
+                beq @underflow
+                dec player_x
+                lda #0
+                jmp (temp + 6)
+@underflow      lda #39
+                sta player_x
+                lda #1
+                jmp (temp + 6)
+
+; Returns A: 0 = no overflow/underflow, 1 = overflow/underflow
+; temp + 6: Return address
+move_player_rt  lda player_x
+                cmp #39
+                beq @overflow
+                inc player_x
+                lda #0
+                jmp (temp + 6)
+@overflow       lda #0
+                sta player_x
+                lda #1
+                jmp (temp + 6)
+
+; Calculate map_num based on map_x and map_y
+calc_map_num    lda map_x
+                sta map_num
+                ldy map_y
+@loop           cpy #0
+                beq @done
+                dey
+                lda #MAP_MAX_X+1
+                clc
+                adc map_num
+                sta map_num
+                lda #0
+                adc map_num + 1
+                sta map_num + 1
+                jmp @loop
+@done           rts
+
+; Returns A: 0 = invalid move, 1 = valid move
+; temp + 6: Return address
+try_map_up      lda map_y
+                cmp #0
+                beq @invalid_move
+                dec map_y
+                jsr calc_map_num
+                jsr load_map_data
+                jsr draw_screen
+                jsr color_screen
+                lda #0
+                jsr draw_player
+                lda #1
+                jmp (temp + 6)
+@invalid_move   lda #0
+                jmp (temp + 6)
+
+; Returns A: 0 = invalid move, 1 = valid move
+; temp + 6: Return address
+try_map_dn      lda map_y
+                cmp #MAP_MAX_Y
+                beq @invalid_move
+                inc map_y
+                jsr calc_map_num
+                jsr load_map_data
+                jsr draw_screen
+                jsr color_screen
+                lda #0
+                jsr draw_player
+                lda #1
+                jmp (temp + 6)
+@invalid_move   lda #0
+                jmp (temp + 6)
+
+; Returns A: 0 = invalid move, 1 = valid move
+; temp + 6: Return address
+try_map_lt      lda map_x
+                cmp #0
+                beq @invalid_move
+                dec map_x
+                jsr calc_map_num
+                jsr load_map_data
+                jsr draw_screen
+                jsr color_screen
+                lda #0
+                jsr draw_player
+                lda #1
+                jmp (temp + 6)
+@invalid_move   lda #0
+                jmp (temp + 6)
+
+; Returns A: 0 = invalid move, 1 = valid move
+; temp + 6: Return address
+try_map_rt      lda map_x
+                cmp #MAP_MAX_X
+                beq @invalid_move
+                inc map_x
+                jsr calc_map_num
+                jsr load_map_data
+                jsr draw_screen
+                jsr color_screen
+                lda #0
+                jsr draw_player
+                lda #1
+                jmp (temp + 6)
+@invalid_move   lda #0
+                jmp (temp + 6)
+
+; Determine if current position is a valid space or not
+; Returns A: 1 = valid, 0 = invalid
+valid_space     ldx player_y
+                ldy player_x
+                jsr get_char
+                cmp #32
+                beq @valid_move
+                lda #0
+                rts
+@valid_move     lda #1
+                rts
+
+; Input:
+;   temp + 0: "Move player in direction" function pointer
+;   temp + 2: "Undo move player in direction" function pointer
+;   temp + 4: "Move map in direction" function pointer
+move_player     ; Jump to move player in direction function pointer
+                lda #<@r1
+                sta temp + 6
+                lda #>@r1
+                sta temp + 7
+                jmp (temp + 0)
+
+@r1             ; Did the move result in an underflow/overflow?
+                cmp #1
+                bne @no_un_ov_flow
+
+                ; Underflow/overflow, try map move
+                lda #<@r2
+                sta temp + 6
+                lda #>@r2
+                sta temp + 7
+                jmp (temp + 4)
+
+@r2             ; Map move okay?
+                cmp #0
+                beq @invalid_move
+                rts
+
+                ; Valid map move
+                rts
+
+@no_un_ov_flow  ; No underflow/overflow, check for valid space
+                jsr valid_space
+                cmp #0
+                beq @invalid_move
+
+                ; Valid move
+                lda #1
+                jsr draw_player
+                rts
+
+@invalid_move    ; Undo move
+                lda #<@r3
+                sta temp + 6
+                lda #>@r3
+                sta temp + 7
+                jmp (temp + 2)
+@r3             rts
 
 ; Detect "w" key press and optionally process movement in "up" direction
-; Returns A: 1 = moved, 0 = no move
 check_w_key     check_key 9
                 cmp #1
-                bne @no_move
-                lda player_y
-                cmp #0
-                ; TODO: Check for movement into another screen
-                beq @no_move
-                dec player_y
-                ; Don't move into non-blank position
-                ldx player_y
-                ldy player_x
-                jsr get_char
-                cmp #32
-                beq @move
-                inc player_y
-                lda #0
-                rts
-@move           lda #1
-                jsr draw_player
+                bne @no_key
+                lda #<move_player_up
+                sta temp + 0
+                lda #>move_player_up
+                sta temp + 1
+                lda #<move_player_dn
+                sta temp + 2
+                lda #>move_player_dn
+                sta temp + 3
+                lda #<try_map_up
+                sta temp + 4
+                lda #>try_map_up
+                sta temp + 5
+                jsr move_player
                 jsr delay
-                lda #1
-                rts
-@no_move        lda #0
-                rts
+@no_key         rts
 
 ; Detect "s" key press and optionally process movement in "down" direction
-; Returns A: 1 = moved, 0 = no move
 check_s_key     check_key 13
                 cmp #1
-                bne @no_move
-                lda player_y
-                lda #24
-                ; TODO: Check for movement into another screen
-                beq @no_move
-                inc player_y
-                ; Don't move into non-blank position
-                ldx player_y
-                ldy player_x
-                jsr get_char
-                cmp #32
-                beq @move
-                dec player_y
-                lda #0
-                rts
-@move           lda #1
-                jsr draw_player
+                bne @no_key
+                lda #<move_player_dn
+                sta temp + 0
+                lda #>move_player_dn
+                sta temp + 1
+                lda #<move_player_up
+                sta temp + 2
+                lda #>move_player_up
+                sta temp + 3
+                lda #<try_map_dn
+                sta temp + 4
+                lda #>try_map_dn
+                sta temp + 5
+                jsr move_player
                 jsr delay
-                lda #1
-                rts
-@no_move        lda #0
-                rts
+@no_key         rts
 
 ; Detect "a" key press and optionally process movement in "left" direction
-; Returns A: 1 = moved, 0 = no move
 check_a_key     check_key 10
                 cmp #1
-                bne @no_move
-                lda player_x
-                cmp #0
-                ; TODO: Check for movement into another screen
-                beq @no_move
-                dec player_x
-                ; Don't move into non-blank position
-                ldx player_y
-                ldy player_x
-                jsr get_char
-                cmp #32
-                beq @move
-                inc player_x
-                lda #0
-                rts
-@move           lda #1
-                jsr draw_player
+                bne @no_key
+                lda #<move_player_lt
+                sta temp + 0
+                lda #>move_player_lt
+                sta temp + 1
+                lda #<move_player_rt
+                sta temp + 2
+                lda #>move_player_rt
+                sta temp + 3
+                lda #<try_map_lt
+                sta temp + 4
+                lda #>try_map_lt
+                sta temp + 5
+                jsr move_player
                 jsr delay
-                lda #1
-                rts
-@no_move        lda #0
-                rts
+@no_key         rts
 
 ; Detect "d" key press and optionally process movement in "right" direction
-; Returns A: 1 = moved, 0 = no move
 check_d_key     check_key 18
                 cmp #1
-                bne @no_move
-                lda player_x
-                cmp #39
-                ; TODO: Check for movement into another screen
-                beq @no_move
-                inc player_x
-                ; Don't move into non-blank position
-                ldx player_y
-                ldy player_x
-                jsr get_char
-                cmp #32
-                beq @move
-                dec player_x
-                lda #0
-                rts
-@move           lda #1
-                jsr draw_player
+                bne @no_key
+                lda #<move_player_rt
+                sta temp + 0
+                lda #>move_player_rt
+                sta temp + 1
+                lda #<move_player_lt
+                sta temp + 2
+                lda #>move_player_lt
+                sta temp + 3
+                lda #<try_map_rt
+                sta temp + 4
+                lda #>try_map_rt
+                sta temp + 5
+                jsr move_player
                 jsr delay
-                lda #1
-                rts
-@no_move        lda #0
-                rts
+@no_key         rts
 
 ; Put character at location (X = row, Y = col, A = character)
 put_char        sta temp
@@ -634,11 +794,16 @@ player_y        BYTE 4
 player_x_prev   BYTE 0
 player_y_prev   BYTE 0
 
+player_moved    BYTE 0
+
+map_x           BYTE 0
+map_y           BYTE 0
+
 map_num         BYTE 0, 0
 
 map_data_start  BYTE 0, 0
 
-temp            BYTE 0, 0, 0, 0, 0, 0
+temp            BYTE 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
 
 ; Map data
 map_data        BYTE 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
